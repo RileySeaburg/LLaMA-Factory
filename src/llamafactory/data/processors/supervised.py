@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 from ...extras import logging
 from ...extras.constants import IGNORE_INDEX
 from .processor_utils import greedy_knapsack, infer_seqlen
+from .code_converter import convert_code_dataset
 
 
 if TYPE_CHECKING:
@@ -94,6 +95,25 @@ def preprocess_supervised_dataset(
     processor: Optional["ProcessorMixin"],
     data_args: "DataArguments",
 ) -> Dict[str, List[Any]]:
+    # Check if this is a code dataset that needs conversion
+    dataset_type = None
+    if "content" in examples:
+        dataset_type = "starcoder"
+    elif "input" in examples and "output" in examples:
+        dataset_type = "rust_explanation"
+
+    if dataset_type:
+        try:
+            # Convert code dataset to training format
+            examples = convert_code_dataset(examples, format_type="alpaca", dataset_type=dataset_type)
+            logger.info_rank0("Successfully converted code dataset to training format")
+        except ImportError as e:
+            logger.warning_rank0(f"Could not convert code dataset: {e}")
+            logger.warning_rank0("Proceeding with raw format")
+        except Exception as e:
+            logger.warning_rank0(f"Error converting code dataset: {e}")
+            logger.warning_rank0("Proceeding with raw format")
+
     # build inputs with format `<bos> X Y <eos>` and labels with format `<ignore> ... <ignore> Y <eos>`
     # for multiturn examples, we only mask the prompt part in each prompt-response pair.
     model_inputs = defaultdict(list)
@@ -134,6 +154,25 @@ def preprocess_packed_supervised_dataset(
     processor: Optional["ProcessorMixin"],
     data_args: "DataArguments",
 ) -> Dict[str, List[Any]]:
+    # Check if this is a code dataset that needs conversion
+    dataset_type = None
+    if "content" in examples:
+        dataset_type = "starcoder"
+    elif "input" in examples and "output" in examples:
+        dataset_type = "rust_explanation"
+
+    if dataset_type:
+        try:
+            # Convert code dataset to training format
+            examples = convert_code_dataset(examples, format_type="alpaca", dataset_type=dataset_type)
+            logger.info_rank0("Successfully converted code dataset to training format")
+        except ImportError as e:
+            logger.warning_rank0(f"Could not convert code dataset: {e}")
+            logger.warning_rank0("Proceeding with raw format")
+        except Exception as e:
+            logger.warning_rank0(f"Error converting code dataset: {e}")
+            logger.warning_rank0("Proceeding with raw format")
+
     # TODO: use `position_ids` to achieve packing
     # build inputs with format `<bos> X1 Y1 <eos> <bos> X2 Y2 <eos>`
     # and labels with format `<ignore> ... <ignore> Y1 <eos> <ignore> ... <ignore> Y2 <eos>`

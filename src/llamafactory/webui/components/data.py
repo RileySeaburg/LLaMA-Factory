@@ -14,7 +14,7 @@
 
 import json
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Generator
 
 from ...extras.constants import DATA_CONFIG
 from ...extras.packages import is_gradio_available
@@ -56,14 +56,40 @@ def can_preview(dataset_dir: str, dataset: list) -> "gr.Button":
         return gr.Button(interactive=False)
 
 
-def _load_data_file(file_path: str) -> List[Any]:
+def _count_lines(file_path: str) -> int:
+    count = 0
+    with open(file_path, 'rb') as f:
+        # Count lines efficiently using binary mode
+        for _ in f:
+            count += 1
+    return count
+
+
+def _lazy_load_json(file_path: str, start: int, size: int) -> List[Any]:
+    """Lazily load a specific page from a JSON file"""
     with open(file_path, encoding="utf-8") as f:
-        if file_path.endswith(".json"):
-            return json.load(f)
-        elif file_path.endswith(".jsonl"):
-            return [json.loads(line) for line in f]
+        if file_path.endswith(".jsonl"):
+            # For JSONL, we can skip to the desired lines
+            for i, line in enumerate(f):
+                if i >= start and i < start + size:
+                    yield json.loads(line)
+                elif i >= start + size:
+                    break
         else:
-            return list(f)
+            # For regular JSON, we need to load the array index
+            data = json.load(f)
+            for item in data[start:start + size]:
+                yield item
+
+
+def _lazy_load_text(file_path: str, start: int, size: int) -> Generator[str, None, None]:
+    """Lazily load a specific page from a text file"""
+    with open(file_path, encoding="utf-8") as f:
+        for i, line in enumerate(f):
+            if i >= start and i < start + size:
+                yield line.strip()
+            elif i >= start + size:
+                break
 
 
 def get_preview(dataset_dir: str, dataset: list, page_index: int) -> Tuple[int, list, "gr.Column"]:
@@ -71,14 +97,37 @@ def get_preview(dataset_dir: str, dataset: list, page_index: int) -> Tuple[int, 
         dataset_info = json.load(f)
 
     data_path = os.path.join(dataset_dir, dataset_info[dataset[0]]["file_name"])
+    
+    # Show loading state
+    preview_box = gr.Column(visible=True)
+    
     if os.path.isfile(data_path):
-        data = _load_data_file(data_path)
+        # Get total count efficiently
+        total_count = _count_lines(data_path)
+        
+        # Load just the requested page
+        start = PAGE_SIZE * page_index
+        if data_path.endswith((".json", ".jsonl")):
+            data = list(_lazy_load_json(data_path, start, PAGE_SIZE))
+        else:
+            data = list(_lazy_load_text(data_path, start, PAGE_SIZE))
     else:
+        # Handle directory case
+        total_count = 0
         data = []
         for file_name in os.listdir(data_path):
-            data.extend(_load_data_file(os.path.join(data_path, file_name)))
+            file_path = os.path.join(data_path, file_name)
+            total_count += _count_lines(file_path)
+            
+            # Only load data if it's in our page range
+            start = PAGE_SIZE * page_index
+            if len(data) < PAGE_SIZE:
+                if file_path.endswith((".json", ".jsonl")):
+                    data.extend(list(_lazy_load_json(file_path, start, PAGE_SIZE - len(data))))
+                else:
+                    data.extend(list(_lazy_load_text(file_path, start, PAGE_SIZE - len(data))))
 
-    return len(data), data[PAGE_SIZE * page_index : PAGE_SIZE * (page_index + 1)], gr.Column(visible=True)
+    return total_count, data, preview_box
 
 
 def create_preview_box(dataset_dir: "gr.Textbox", dataset: "gr.Dropdown") -> Dict[str, "Component"]:

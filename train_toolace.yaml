@@ -1,0 +1,42 @@
+### model
+model_name_or_path: meta-llama/Llama-3.2-11B-Vision-Instruct
+
+### method
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_target: all
+lora_rank: 64
+lora_alpha: 128
+lora_dropout: 0.1
+
+### dataset
+dataset: toolace
+template: llama3
+cutoff_len: 2048
+max_samples: 50000
+preprocessing_num_workers: 16
+
+### output
+output_dir: saves/toolace/lora/sft
+logging_steps: 10
+save_steps: 100
+plot_loss: true
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
+learning_rate: 2.0e-4
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.03
+weight_decay: 0.01
+max_grad_norm: 1.0
+neftune_noise_alpha: 5
+
+### eval
+eval_strategy: "no"
+
+### mixed precision training
+fp16: true
+bf16: false

@@ -171,3 +171,4 @@ config/
 saves/
 output/
 wandb/
+data/rust_dataset.json
